@@ -3,7 +3,9 @@
 ---@class LQT
 local LQT = {}
 
+
 ---@class LQT.AnyWidget: UIParent, EditBox, Texture, AnimationGroup
+---@field GetParent fun(self: LQT.AnyWidget, ...): any
 
 ---@class LQT.WidgetDescription
 ---@field [WidgetMethodKey] LQT.WidgetMethod
