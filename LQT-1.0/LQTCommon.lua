@@ -5,7 +5,8 @@ local Addon = select(2, ...)
 local LQT = Addon.LQT
 
 ---@class LQT.internal
-local internal = LQT.internal
+local internal = {}
+LQT.internal = internal
 
 local ApplyFrameProxy = LQT.ApplyFrameProxy
 

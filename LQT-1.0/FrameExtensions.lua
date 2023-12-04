@@ -12,7 +12,6 @@ local FrameExtensions = LQT.FrameExtensions
 
 local query = LQT.query
 
-local values = Addon.util.values
 
 local FrameProxyMt = LQT.FrameProxyMt
 local ApplyFrameProxy = LQT.ApplyFrameProxy
@@ -30,6 +29,17 @@ local CORNER_TO_VEC = {
     RIGHT = { 1, 0 },
     CENTER = { 0, 0 }
 }
+
+
+local function values(table)
+    local k, v = nil, nil
+    return function()
+        k, v = next(table, k)
+        if k ~= nil then
+            return v
+        end
+    end
+end
 
 
 function FrameExtensions:FitToChildren()

@@ -37,180 +37,6 @@ end
 local COMPILED_FN_ENV = LQT.internal.COMPILED_FN_ENV
 
 
-local function CompileBody(parentClass, arg, context)
-
-    local attributes = {}
-    local childrenCreate = {}
-    local children = {}
-    local magicKeys = {}
-    local initialize = {}
-
-    local class = ShallowCopy(parentClass or {})
-
-    for k, v in pairs(arg) do
-
-        if type(k) == 'number' then
-            if IsStyle(v) then
-                table.insert(children, { nil, v })
-            else
-                table.insert(initialize, { nil, v })
-            end
-
-        elseif IsFrameProxy(k) then
-            if v then
-                table.insert(magicKeys, { k, v })
-            end
-
-        elseif type(k) == 'table' and getmetatable(k).lqtKeyCompile then
-            if v then
-                table.insert(magicKeys, getmetatable(k).lqtKeyCompile(k, v))
-            end
-
-        elseif type(v) == 'table' then
-            if IsFrameProxy(v) then
-                assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                class[k] = v
-                table.insert(initialize, { k, v })
-
-            elseif IsStyle(v) then
-                if type(k) == 'string' then
-                    if k:sub(1, 1) ~= '.' then
-                        assert(v[CONSTRUCTOR], 'Style has no constructor: ' .. v[CONTEXT])
-                        assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                        class[k] = v
-                        table.insert(childrenCreate, { k, v })
-                    end
-                    table.insert(children, { k, v })
-                else
-                    assert(false, 'Not implemented: ' .. type(k) .. ' ' .. tostring(k))
-                end
-
-            else
-                assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                class[k] = v
-                table.insert(attributes, { k, v })
-            end
-        else
-            assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-            class[k] = v
-            table.insert(attributes, { k, v })
-        end
-    end
-
-    table.sort(childrenCreate, function(a, b)
-        return a[2][CONTEXT] < b[2][CONTEXT]
-    end)
-
-    table.sort(children, function(a, b)
-        return a[2][CONTEXT] < b[2][CONTEXT]
-    end)
-
-    local code = ('local widget, parent_if_constructed, args, {env} = ...\n')
-        :gsub('{env}', COMPILED_FN_ENV)
-    local args = {}
-
-    for i=1, #attributes do
-        local k, v = attributes[i][1], attributes[i][2]
-        if type(v) == 'table' and not next(v) and not getmetatable(v) then
-            code = code .. ('widget[\'{k}\'] = {}\n')
-                :gsub('{k}', k)
-        else
-            code = code .. ('widget[\'{k}\'] = args[{i}]\n')
-                :gsub('{k}', k)
-                :gsub('{i}', #args+1)
-            args[#args+1] = v
-        end
-    end
-
-    for i=1, #childrenCreate do
-        local k, v = childrenCreate[i][1], childrenCreate[i][2]
-        code = code .. (
-            'if not widget[\'{k}\'] then\n' ..
-            '    widget[\'{k}\'] = args[{i}](widget)\n' ..
-            'end\n'
-        )
-            :gsub('{k}', k)
-            :gsub('{i}', #args+1)
-        args[#args+1] = v[CONSTRUCTOR]
-    end
-
-    for i=1, #children do
-        local k, v = children[i][1], children[i][2]
-        if k and k:sub(1, 1) == '.' then
-            code = code .. (
-                'local StyleChildren = args[{i}][1]\n' ..
-                'for child in query(widget, \'{k}\') do\n' ..
-                '    StyleChildren(child, widget, args[{i}][2], {env})\n' ..
-                'end\n'
-            )
-                :gsub('{k}', k)
-                :gsub('{i}', #args+1)
-                :gsub('{env}', COMPILED_FN_ENV)
-            internal.CompileChain(v)
-            args[#args+1] = v[COMPILED]
-        elseif k then
-            code = code .. ('local StyleChild = args[{i}][1]; ' ..
-                            'StyleChild(widget[\'{k}\'], widget, args[{i}][2], {env})\n')
-                :gsub('{k}', k)
-                :gsub('{i}', #args+1)
-                :gsub('{env}', COMPILED_FN_ENV)
-            internal.CompileChain(v)
-            args[#args+1] = v[COMPILED]
-        else
-            code = code .. ('local Style = args[{i}][1]; ' ..
-                            'Style(widget, parent_if_constructed, args[{i}][2], {env})\n')
-                :gsub('{i}', #args+1)
-                :gsub('{env}', COMPILED_FN_ENV)
-            internal.CompileChain(v)
-            args[#args+1] = v[COMPILED]
-        end
-    end
-
-    for i=1, #magicKeys do
-        if type(magicKeys[i]) == 'table' and IsFrameProxy(magicKeys[i][1]) then
-            local proxy, fn = magicKeys[i][1], magicKeys[i][2]
-            code = code .. ('args[{i}](widget, parent_if_constructed)\n')
-                :gsub('{i}', #args+1)
-            args[#args+1] = function(widget)
-                local proxyTarget, proxyKey = FrameProxyTargetKey(widget, proxy)
-                assert(proxyKey, 'Cannot hook ' .. tostring(proxy))
-                if widget == proxyTarget then
-                    hooksecurefunc(widget, proxyKey, fn)
-                else
-                    hooksecurefunc(proxyTarget, proxyKey, function(...)
-                        fn(widget, ...)
-                    end)
-                end
-            end
-        else
-            code = code .. ('args[{i}](widget, parent_if_constructed)\n')
-                :gsub('{i}', #args+1)
-            args[#args+1] = magicKeys[i]
-        end
-    end
-
-    for i=1, #initialize do
-        local k, v = initialize[i][1], initialize[i][2]
-        if type(v) == 'function' then
-            code = code .. ('args[{i}](widget, parent_if_constructed)\n')
-                :gsub('{i}', #args+1)
-            args[#args+1] = v
-        elseif k and IsFrameProxy(v) then
-            code = code .. ('widget[\'{k}\'] = ApplyFrameProxy(widget, args[{i}])\n')
-                :gsub('{k}', k)
-                :gsub('{i}', #args+1)
-            args[#args+1] = v
-        else
-            assert(false, 'Not implemented')
-        end
-    end
-
-    local fn = loadstring(code, context:gsub('%[string "(@.*)"%]:(%d+).*', '%1:%2') .. ':{}')
-
-    return fn, args, class
-end
-
-
 local CompilerMT = {
     __index = {
         append = function(self, ...)
@@ -279,7 +105,7 @@ local function Compiler()
 end
 
 
-local function CompileBody2(parentClass, arg, context)
+local function CompileBody(parentClass, arg, context)
 
     local attributes = {}
     local childrenCreate = {}
@@ -367,9 +193,10 @@ local function CompileBody2(parentClass, arg, context)
 
     for i=1, #childrenCreate do
         local k, v = childrenCreate[i][1], childrenCreate[i][2]
-        code:append(k, v[CONSTRUCTOR], [[
+        code:append(k, v[CONSTRUCTOR], v[CLASS], [[
             if not widget[{1}] then
                 widget[{1}] = {2}(widget)
+                widget[{1}].lqtClass = {3}
             end
         ]])
     end
@@ -426,6 +253,12 @@ local function CompileBody2(parentClass, arg, context)
         end
     end
 
+    local codeCount = 1
+    while class['__code_' .. codeCount] do
+        codeCount = codeCount + 1
+    end
+    class['__code_' .. codeCount] = code[1]
+
     local fn, args = code:compile(context:gsub('%[string "(@.*)"%]:(%d+).*', '%1:%2') .. ':{}')
 
     return fn, args, class
@@ -438,7 +271,7 @@ function internal.CompileBody(style, arg, context)
         error('Cannot call CompileBody with ' .. type(arg))
     end
     context = context or get_context(4)
-    local compiled, compiledargs, class = CompileBody2(style[CLASS], arg, context)
+    local compiled, compiledargs, class = CompileBody(style[CLASS], arg, context)
     local action = chain_extend(style, { [ACTION]=compiled, [ARGS]=compiledargs, [CONTEXT]=context, [CLASS]=class })
     if action[BOUND_FRAME] then
         run_head(action)

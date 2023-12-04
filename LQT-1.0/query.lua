@@ -4,26 +4,14 @@ local Addon = select(2, ...)
 ---@class LQT
 local LQT = Addon.LQT
 
-local keys = Addon.util.keys
-local values = Addon.util.values
-local split_at_find = Addon.util.split_at_find
 
-local function merge(...)
-    local result = {}
-    for _, t in pairs({...}) do
-        for _, v in pairs(t) do
-            table.insert(result, v)
-        end
+local function split_at_find(str, pattern, after)
+    after = after or 0
+    local i = string.find(str, pattern)
+    if i then
+        return strsub(str, 1, i+after-1), strsub(str, i+after)
     end
-    return result
-end
-
-local function has_value(table, value)
-    for v in values(table) do
-        if v == value then
-            return true
-        end
-    end
+    return str, ''
 end
 
 

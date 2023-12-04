@@ -1,0 +1,6 @@
+## Interface: 100002
+## Title: LQT
+## Author: weltensturm
+## Notes: Library to create cool frames
+
+LQT.xml

@@ -34,6 +34,7 @@ local FILTER = FIELDS.FILTER
 local COMPILED = FIELDS.COMPILED
 local CONTEXT = FIELDS.CONTEXT
 local CLEARS_POINTS = FIELDS.CLEARS_POINTS
+local CLASS = FIELDS.CLASS
 
 local IsStyle = internal.IsStyle
 
@@ -141,6 +142,7 @@ function StyleFunctions:new(parent, ...)
     local obj = self[CONSTRUCTOR](parent or UIParent, ...)
     local new, compiledargs = CompileChain(self)
     new(obj, parent or UIParent, compiledargs, ApplyFrameProxy, query, FrameExtensions)
+    obj.lqtClass = self[CLASS]
     -- self.apply(obj, parent or UIParent)
     return obj
 end
