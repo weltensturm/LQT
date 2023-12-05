@@ -33,7 +33,7 @@ end
 
 
 function internal.get_context(level)
-    local context = strsplittable('\n', debugstack(level or 3, 99, 99))
+    local context = strsplittable('\n', debugstack(level or 3, 99, 99) or '')
     for i=1, #context do
         if context[i] ~= '[string "=(tail call)"]: ?' then
             return context[i]

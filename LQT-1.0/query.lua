@@ -104,32 +104,22 @@ local function apply_style(result, style)
 end
 
 
-local lqt_result_functions = {}
+local queryResultFunctions = {}
 
 
-local function lqt_result(table)
+local function queryResult(table)
     local k, v = nil, nil
-    local and_then = nil
     local meta = {
-        __call = function(self, style)
-            if style then
-                return apply_style(self, style)
-            end
+        __call = function(self)
             k, v = next(self, k)
             if k ~= nil then
                 return v
-            else
-                if and_then then
-                    for _, fn in pairs(and_then) do
-                        self[fn[1]](self, unpack(fn[2]))
-                    end
-                end
             end
         end,
         __index = function(self, attr)
             return function(self, ...)
                 if self ~= table then
-                    return lqt_result_functions[attr](table, self, ...)
+                    return queryResultFunctions[attr](table, self, ...)
                 else
                     for i = 1, #self do
                         local name = rawget(self, i):GetName()
@@ -142,41 +132,31 @@ local function lqt_result(table)
                 end
             end
         end,
-        -- __concat = function(self, right)
-        --     and_then = right
-        --     for at_k, at_v in pairs(self) do
-        --         for _, v in pairs(and_then) do
-        --             local name = at_v:GetName()
-        --             assert(at_v[v[1]], at_v:GetObjectType() .. (name and (' ' .. name) or '') .. ' has no function named ' .. v[1])
-        --         end
-        --     end
-        --     return self
-        -- end
     }
-    setmetatable(table, meta)
-    return table
+    return setmetatable(table, meta)
 end
 
 
-function lqt_result_functions:filter(fn)
+function queryResultFunctions:filter(fn)
     local filtered = {}
-    for _, v in pairs(self) do
+    for i=1, #self do
+        local v = rawget(self, i)
         if fn(v) then
-            table.insert(filtered, v)
+            filtered[#filtered+1] = v
         end
     end
-    return lqt_result(filtered)
+    return queryResult(filtered)
 end
 
-function lqt_result_functions:sort(fn)
+function queryResultFunctions:sort(fn)
     if fn then
-        return lqt_result(fn(self))
+        return queryResult(fn(self))
     else
-        return lqt_result(sortByAnchors(self))
+        return queryResult(sortByAnchors(self))
     end
 end
 
-function lqt_result_functions:all()
+function queryResultFunctions:all()
     return { unpack(self) }
 end
 
@@ -217,7 +197,7 @@ end
 
 
 local function query(obj, pattern, found)
-    if not obj.GetRegions or not obj.GetChildren then return lqt_result {} end
+    if not obj.GetRegions or not obj.GetChildren then return queryResult {} end
     if type(pattern) == 'table' then
         return apply_style({ obj }, pattern)
     end
@@ -240,7 +220,7 @@ local function query(obj, pattern, found)
                 if not obj[index_selector] or obj[index_selector]:GetParent() ~= obj then
                     obj[index_selector] = constructor(obj)
                 end
-                return lqt_result { obj[index_selector] }
+                return queryResult { obj[index_selector] }
             end
         end
 
@@ -293,7 +273,7 @@ local function query(obj, pattern, found)
         for frame, _ in pairs(found) do
             table.insert(result, frame)
         end
-        return lqt_result(result)
+        return queryResult(result)
     end
 end
 

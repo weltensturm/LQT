@@ -3,4 +3,14 @@
 ## Author: weltensturm
 ## Notes: Library to create cool frames
 
-LQT.xml
+__init__.lua
+FrameProxy.lua
+query.lua
+FrameExtensions.lua
+LQTCommon.lua
+StyleMeta.lua
+StyleAnchors.lua
+StyleFunctions.lua
+StyleBody.lua
+StyleKeys.lua
+LQT.lua
