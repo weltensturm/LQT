@@ -161,6 +161,7 @@ local function JoinClasses(...)
 end
 
 
+--[[
 function StyleChainMeta:__concat(arg)
     if type(arg) == 'table' then
         local class
@@ -189,4 +190,4 @@ function StyleChainMeta:__concat(arg)
     end
     assert(false, 'Style: cannot concat ' .. type(arg))
 end
-
+]]

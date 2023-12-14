@@ -7,6 +7,10 @@ local LQT = {}
 ---@class LQT.AnyWidget: UIParent, EditBox, Texture, AnimationGroup
 ---@field GetParent fun(self: LQT.AnyWidget, ...): any
 
+---@alias WidgetMethodKey<T> any
+
+---@alias LQT.GenericScript ScriptEditBox | ScriptCheckout | ScriptSlider | ScriptScrollFrame | ScriptButton
+
 ---@class LQT.WidgetDescription
 ---@field [WidgetMethodKey] LQT.WidgetMethod
 ---@field [integer] fun(self: LQT.AnyWidget, parent: LQT.AnyWidget) | LQT.StyleChain

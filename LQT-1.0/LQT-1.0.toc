@@ -2,6 +2,7 @@
 ## Title: LQT
 ## Author: weltensturm
 ## Notes: Library to create cool frames
+## LoadOnDemand: 1
 
 __init__.lua
 FrameProxy.lua
@@ -12,5 +13,9 @@ StyleMeta.lua
 StyleAnchors.lua
 StyleFunctions.lua
 StyleBody.lua
-StyleKeys.lua
+KeyEvent.lua
+KeyHook.lua
+KeyOverride.lua
+KeyScript.lua
+KeyUnitEvent.lua
 LQT.lua
