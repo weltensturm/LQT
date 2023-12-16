@@ -143,126 +143,11 @@ local function TableHandleFrameProxies(frame, table)
 end
 
 
-function FrameExtensions:Hooks(hooks, context)
-    self.lqtHooks = self.lqtHooks or {}
-    self.lqtHookLibrary = self.lqtHookLibrary or {}
-    self.lqtHookLibrary[context or get_context()] = TableHandleFrameProxies(self, hooks)
-    for k, f in pairs(hooks) do
-        assert(f, k .. ' handler is nil, did you hook too early?')
-        if not self.lqtHooks[k] then
-            local hooks = self.lqtHooks
-            self:HookScript(k, function(self, ...)
-                hooks[k](self, ...)
-            end)
-        end
-
-        local build = {}
-        for context, t in pairs(self.lqtHookLibrary) do
-            if t[k] then
-                table.insert(build, t[k])
-            end
-        end
-        self.lqtHooks[k] = ChainFunctions(build)
-    end
-end
-
-
 function FrameExtensions:UnhookAll()
     for k, f in pairs(self.lqtHooks) do
         self.lqtHooks[k] = function() end
     end
     self.lqtHookLibrary = {}
-end
-
-
---[[
-function FrameExtensions:Events(handlers, context)
-    self.lqtEvents = self.lqtEvents or {}
-    self.lqtEventsLibrary = self.lqtEventsLibrary or {}
-    self.lqtEventsLibrary[context or get_context()] = TableHandleFrameProxies(self, handlers)
-    for event, fn in pairs(handlers) do
-        assert(fn, event .. ' handler is nil, did you hook too early?')
-        if not self.lqtEvents[event] then
-            self:RegisterEvent(event)
-            self:SetScript('OnEvent', function(self, event, ...)
-                if self.lqtEvents[event] then
-                    self.lqtEvents[event](self, ...)
-                end
-            end)
-        end
-
-        local build = {}
-        for context, handlers in pairs(self.lqtEventsLibrary) do
-            if handlers[event] then
-                table.insert(build, handlers[event])
-            end
-        end
-        self.lqtEvents[event] = ChainFunctions(build)
-    end
-end
-]]
-
-
-function FrameExtensions:EventHooks(handlers, context)
-    if not self.lqtEventHooks then
-        self.lqtEventHooks = self.lqtEventHooks or {}
-        self:HookScript('OnEvent', function(self, event, ...)
-            local handler = self.lqtEventHooks[event]
-            if handler then
-                handler(self, ...)
-            end
-        end)
-    end
-    self.lqtEventHooksLibrary = self.lqtEventHooksLibrary or {}
-    self.lqtEventHooksLibrary[context or get_context()] = TableHandleFrameProxies(self, handlers)
-    for event, fn in pairs(handlers) do
-        assert(fn, event .. ' handler is nil, did you hook too early?')
-        if not self.lqtEventHooks[event] then
-            self:RegisterEvent(event)
-        end
-
-        local build = {}
-        for context, handlers in pairs(self.lqtEventHooksLibrary) do
-            if handlers[event] then
-                table.insert(build, handlers[event])
-            end
-        end
-        self.lqtEventHooks[event] = ChainFunctions(build)
-    end
-end
-
-
-FrameExtensions.Events = FrameExtensions.EventHooks
-
-
-function FrameExtensions:UnitEvents(handlers, context)
-    if not self.lqtUnitEvents then
-        self.lqtUnitEvents = self.lqtUnitEvents or {}
-        self:HookScript('OnEvent', function(self, event, ...)
-            local handler = self.lqtUnitEvents[event]
-            if handler then
-                handler(self, ...)
-            end
-        end)
-        self.SetEventUnit = self.SetEventUnit or FrameExtensions.SetEventUnit
-    end
-    self.lqtUnitEventsLibrary = self.lqtUnitEventsLibrary or {}
-    self.lqtUnitEventsLibrary[context or get_context()] = TableHandleFrameProxies(self, handlers)
-    for event, fn in pairs(handlers) do
-        assert(fn, event .. ' handler is nil, did you hook too early?')
-        assert(not self.lqtEvents or not self.lqtEvents[event], 'Event ' .. event .. ' is already registered as non-unit event')
-        assert(not self.lqtEventHooks or not self.lqtEventHooks[event], 'Event ' .. event .. ' is already registered as non-unit event hook')
-
-        local build = {}
-        for context, handlers in pairs(self.lqtUnitEventsLibrary) do
-            if handlers[event] then
-                table.insert(build, handlers[event])
-            end
-        end
-        self.lqtUnitEvents[event] = ChainFunctions(build)
-        -- self:UnregisterEvent(event)
-        -- self:RegisterUnitEvent(event, unit)
-    end
 end
 
 
@@ -276,13 +161,6 @@ function FrameExtensions:SetEventUnit(unit, fireAll)
         if fireAll then
             fn(self)
         end
-    end
-end
-
-
-function FrameExtensions:SetData(data)
-    for k, v in pairs(TableHandleFrameProxies(self, data)) do
-        self[k] = v
     end
 end
 
