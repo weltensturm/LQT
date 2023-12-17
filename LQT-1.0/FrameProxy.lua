@@ -173,7 +173,9 @@ ApplyFrameProxy = function(frame, proxy)
     return assert(result, rawget(proxy, TEXT) .. ' is nil')
 end
 
-
+---@param frame LQT.AnyWidget
+---@return LQT.AnyWidget target
+---@return string attribute
 local FrameProxyTargetKey = function(frame, proxy)
     local result, target = rawget(proxy, FN)(frame, frame)
     assert(result, rawget(proxy, TEXT) .. ' is nil')

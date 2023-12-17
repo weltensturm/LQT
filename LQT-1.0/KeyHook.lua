@@ -44,7 +44,7 @@ local HookMt = {
 }
 
 ---@class LQT.Hook
----@field [string] WidgetMethodKey
+---@field [string] LQT.ClassKey
 LQT.Hook = setmetatable({}, {
     __index = function(self, key)
         return setmetatable({ key, get_context() }, HookMt)

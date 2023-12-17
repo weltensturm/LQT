@@ -71,7 +71,7 @@ local EventMt = {
 }
 
 ---@class LQT.Event
----@field [WowEvent] WidgetMethodKey
+---@field [WowEvent] LQT.ClassKey
 LQT.Event = setmetatable({}, {
     __index = function(self, key)
         return setmetatable({ key, get_context() }, EventMt)

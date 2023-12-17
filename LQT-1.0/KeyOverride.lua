@@ -43,7 +43,7 @@ local OverrideMt = {
 }
 
 ---@class LQT.Override
----@field [string] WidgetMethodKey
+---@field [string] LQT.ClassKey
 LQT.Override = setmetatable({}, {
     __index = function(self, key)
         return setmetatable({ key, get_context() }, OverrideMt)

@@ -6,7 +6,6 @@ local LQT = Addon.LQT
 
 
 local get_context = LQT.internal.get_context
-local FrameExtensions = LQT.FrameExtensions
 local IsFrameProxy = LQT.IsFrameProxy
 local FrameProxyTargetKey = LQT.FrameProxyTargetKey
 
@@ -68,8 +67,15 @@ local ScriptMt = {
     end
 }
 
+---@alias LQT.GenericScript
+---|ScriptEditBox
+---|ScriptCheckout
+---|ScriptSlider
+---|ScriptScrollFrame
+---|ScriptButton
+
 ---@class LQT.Script
----@field [LQT.GenericScript] WidgetMethodKey
+---@field [LQT.GenericScript] LQT.ClassKey
 LQT.Script = setmetatable({}, {
     __index = function(self, key)
         return setmetatable({ key, get_context() }, ScriptMt)
