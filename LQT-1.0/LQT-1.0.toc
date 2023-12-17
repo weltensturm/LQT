@@ -1,5 +1,5 @@
 ## Interface: 100002
-## Title: LQT
+## Title: LQT 1.0
 ## Author: weltensturm
 ## Notes: Library to create cool frames
 ## LoadOnDemand: 1
