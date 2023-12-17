@@ -52,7 +52,7 @@ local CompilerMT = {
                 if type(var) == 'number' and not tostring(var):find('%a') then
                     code = code:gsub('{' .. i .. '}', var)
                 elseif type(var) == 'string' then
-                    code = code:gsub('{' .. i .. '}', '\'' .. var .. '\'')
+                    code = code:gsub('{' .. i .. '}', ' [==[' .. var .. ']==]')
                 elseif type(var) == 'nil' then
                     assert(false, 'Argument ' .. i .. ' is nil')
                 else
