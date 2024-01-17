@@ -11,7 +11,7 @@ local ApplyFrameProxy
 
 
 local get_context = function()
-    return strsplittable('\n', debugstack(3,0,1))[1]
+    return strsplittable('\n', debugstack(3,0,1) or '')[1]
 end
 
 

@@ -10,6 +10,7 @@ local internal = LQT.internal
 local IsStyle = LQT.internal.IsStyle
 local IsFrameProxy = LQT.IsFrameProxy
 local FrameProxyTargetKey = LQT.FrameProxyTargetKey
+local ApplyFrameProxy = LQT.ApplyFrameProxy
 local run_head = LQT.internal.run_head
 
 local ACTION = LQT.internal.FIELDS.ACTION
@@ -68,33 +69,33 @@ local CompilerMT = {
         compile = function(self, context)
             local fn, error = loadstring(self[1], context)
 
-            if not fn then
-                local lineno = error:match('(%d+): ')
-                local l = 0
-                for line in self[1]:gmatch('(.-)\n') do
-                    l = l + 1
-                    if l == lineno then
-                        assert(false, error .. ': ' .. line)
-                    end
-                end
-            end
-            local function onError(msg)
-                local lineno = tonumber(msg:match('(%d+): '))
-                local l = 0
-                for line in self[1]:gmatch('(.-)\n') do
-                    l = l + 1
-                    if l == lineno then
-                        CallErrorHandler(msg .. ': ' .. line)
-                        return
-                    end
-                end
-            end
-            local fn2 = function(...)
-                return select(2, xpcall(fn, onError, ...))
-            end
+            -- if not fn then
+            --     local lineno = error --[[@as string]]:match('(%d+): ')
+            --     local l = 0
+            --     for line in self[1]:gmatch('(.-)\n') do
+            --         l = l + 1
+            --         if l == lineno then
+            --             assert(false, error .. ': ' .. line)
+            --         end
+            --     end
+            -- end
+            -- local function onError(msg)
+            --     local lineno = tonumber(msg:match('(%d+): '))
+            --     local l = 0
+            --     for line in self[1]:gmatch('(.-)\n') do
+            --         l = l + 1
+            --         if l == lineno then
+            --             CallErrorHandler(msg .. ': ' .. line)
+            --             return
+            --         end
+            --     end
+            -- end
+            -- local fn2 = function(...)
+            --     return select(2, xpcall(fn --[[@as function]], onError, ...))
+            -- end
 
             return
-                assert(fn2, error),
+                assert(fn, error),
                 self[2]
         end
     }
@@ -110,60 +111,64 @@ local function CompileBody(parentClass, arg, context)
     local attributes = {}
     local childrenCreate = {}
     local children = {}
-    local magicKeys = {}
+    local preInitialize = {}
     local initialize = {}
 
     local class = ShallowCopy(parentClass or {})
 
-    for k, v in pairs(arg) do
+    for key, value in pairs(arg) do
 
-        if type(k) == 'number' then
-            if IsStyle(v) then
-                internal.CompileChain(v)
-                table.insert(children, { nil, v })
+        if type(key) == 'number' then
+            if IsStyle(value) then
+                internal.CompileChain(value)
+                table.insert(children, { nil, value })
             else
-                table.insert(initialize, { nil, v })
+                table.insert(initialize, { nil, value })
             end
 
-        elseif IsFrameProxy(k) then
-            if v then
-                table.insert(magicKeys, { k, v })
+        elseif IsFrameProxy(key) then
+            if value then
+                table.insert(preInitialize, { key, value })
             end
 
-        elseif type(k) == 'table' and getmetatable(k).lqtKeyCompile then
-            if v then
-                table.insert(magicKeys, getmetatable(k).lqtKeyCompile(k, v))
+        elseif type(key) == 'table' and getmetatable(key).lqtKeyCompile then
+            if value then
+                table.insert(preInitialize, getmetatable(key).lqtKeyCompile(key, value))
             end
 
-        elseif type(v) == 'table' then
-            if IsFrameProxy(v) then
-                assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                class[k] = v
-                table.insert(initialize, { k, v })
-
-            elseif IsStyle(v) then
-                internal.CompileChain(v)
-                if type(k) == 'string' then
-                    if k:sub(1, 1) ~= '.' then
-                        assert(v[CONSTRUCTOR], 'Style has no constructor: ' .. v[CONTEXT])
-                        assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                        class[k] = v
-                        table.insert(childrenCreate, { k, v })
-                    end
-                    table.insert(children, { k, v })
+        elseif type(value) == 'table' then
+            if IsFrameProxy(value) then
+                assert(not class[key], 'Cannot shadow ' .. key .. ' of parent class')
+                class[key] = value
+                if type(key) == 'string' then
+                    table.insert(attributes, { key, value })
                 else
-                    assert(false, 'Not implemented: ' .. type(k) .. ' ' .. tostring(k))
+                    table.insert(initialize, { key, value })
+                end
+
+            elseif IsStyle(value) then
+                internal.CompileChain(value)
+                if type(key) == 'string' then
+                    if key:sub(1, 1) ~= '.' then
+                        assert(value[CONSTRUCTOR], 'Style has no constructor: ' .. value[CONTEXT])
+                        assert(not class[key], 'Cannot shadow ' .. key .. ' of parent class')
+                        class[key] = value
+                        table.insert(childrenCreate, { key, value })
+                    end
+                    table.insert(children, { key, value })
+                else
+                    assert(false, 'Not implemented: ' .. type(key) .. ' ' .. tostring(key))
                 end
 
             else
-                assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-                class[k] = v
-                table.insert(attributes, { k, v })
+                assert(not class[key], 'Cannot shadow ' .. key .. ' of parent class')
+                class[key] = value
+                table.insert(attributes, { key, value })
             end
         else
-            assert(not class[k], 'Cannot shadow ' .. k .. ' of parent class')
-            class[k] = v
-            table.insert(attributes, { k, v })
+            assert(not class[key], 'Cannot shadow ' .. key .. ' of parent class')
+            class[key] = value
+            table.insert(attributes, { key, value })
         end
     end
 
@@ -180,11 +185,18 @@ local function CompileBody(parentClass, arg, context)
         env = COMPILED_FN_ENV
     }
 
+    code:append('-- ' .. context)
     code:append('local widget, parent_if_constructed, args, {env} = ...')
 
     for i=1, #attributes do
         local k, v = attributes[i][1], attributes[i][2]
-        if type(v) == 'table' and not next(v) and not getmetatable(v) then
+        if IsFrameProxy(v) then
+            code:append(k, v, [[
+                if not widget[{1}] then
+                    widget[{1}] = ApplyFrameProxy(widget, {2})
+                end
+            ]])
+        elseif type(v) == 'table' and not next(v) and not getmetatable(v) then
             code:append(k, 'widget[{1}] = {}')
         else
             code:append(k, v, 'widget[{1}] = {2}')
@@ -196,7 +208,7 @@ local function CompileBody(parentClass, arg, context)
         code:append(k, v[CONSTRUCTOR], v[CLASS], [[
             if not widget[{1}] then
                 widget[{1}] = {2}(widget)
-                widget[{1}].lqtClass = {3}
+                widget[{1}]['lqt.class'] = {3}
             end
         ]])
     end
@@ -223,9 +235,9 @@ local function CompileBody(parentClass, arg, context)
         end
     end
 
-    for i=1, #magicKeys do
-        if type(magicKeys[i]) == 'table' and IsFrameProxy(magicKeys[i][1]) then
-            local proxy, fn = magicKeys[i][1], magicKeys[i][2]
+    for i=1, #preInitialize do
+        if type(preInitialize[i]) == 'table' and IsFrameProxy(preInitialize[i][1]) then
+            local proxy, fn = preInitialize[i][1], preInitialize[i][2]
             code:append(proxy, fn, FrameProxyTargetKey, [[
                 local proxyTarget, proxyKey = {3}(widget, {1})
                 assert(proxyKey, 'Cannot hook ' .. tostring(proxy))
@@ -238,7 +250,7 @@ local function CompileBody(parentClass, arg, context)
                 end
             ]])
         else
-            code:append(magicKeys[i], '{1}(widget, parent_if_constructed)')
+            code:append(preInitialize[i], '{1}(widget, parent_if_constructed)')
         end
     end
 

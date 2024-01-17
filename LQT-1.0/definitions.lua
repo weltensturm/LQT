@@ -12,7 +12,7 @@ local LQT = {}
 ---@alias LQT.WidgetMethod fun(self: LQT.AnyWidget|any, ...): ...
 
 ---@class LQT.ClassBody
----@field [LQT.ClassKey] LQT.WidgetMethod
+---@field [LQT.ClassKey] LQT.WidgetMethod|false
 ---@field [integer] fun(self: LQT.AnyWidget, parent: LQT.AnyWidget) | LQT.StyleChain
 ---@field [string] LQT.WidgetMethod | LQT.StyleChain | any
 
@@ -44,7 +44,7 @@ function StyleFunctionProxy.constructor(constructor) end
 ---@generic T
 ---@param parent? LQT.AnyWidget | ScriptRegion
 ---@param globalName string?
----@return T
+---@return Region
 function StyleFunctionProxy.new(parent, globalName, ...) end
 
 

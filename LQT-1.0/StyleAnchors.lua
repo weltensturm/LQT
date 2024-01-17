@@ -31,8 +31,18 @@ function AnchorMt:__index(attr)
     end
 end
 
-function AnchorMt:__call(...)
-    assert(false, 'Style:' .. self[1] .. '() is reserved - sorry')
+function AnchorMt:__call(target, x, y)
+    local point, style = self[1], self[2]
+    if not style[CLEARS_POINTS] then
+        style = chain_extend(style, { [CLEARS_POINTS]=true })
+            :ClearAllPoints()
+    end
+    if type(target) ~= 'table' then
+        y = x
+        x = target
+        target = LQT.PARENT
+    end
+    return style:Point(point, target, point, x, y)
 end
 
 
@@ -56,15 +66,15 @@ end
 
 
 ---@class LQT.internal.StyleAttributes
----@field TOP LQT.internal.Anchor
----@field TOPRIGHT LQT.internal.Anchor
----@field RIGHT LQT.internal.Anchor
----@field BOTTOMRIGHT LQT.internal.Anchor
----@field BOTTOM LQT.internal.Anchor
----@field BOTTOMLEFT LQT.internal.Anchor
----@field LEFT LQT.internal.Anchor
----@field TOPLEFT LQT.internal.Anchor
----@field CENTER LQT.internal.Anchor
+---@field TOP LQT.internal.Anchor|LQT.AnchorTarget
+---@field TOPRIGHT LQT.internal.Anchor|LQT.AnchorTarget
+---@field RIGHT LQT.internal.Anchor|LQT.AnchorTarget
+---@field BOTTOMRIGHT LQT.internal.Anchor|LQT.AnchorTarget
+---@field BOTTOM LQT.internal.Anchor|LQT.AnchorTarget
+---@field BOTTOMLEFT LQT.internal.Anchor|LQT.AnchorTarget
+---@field LEFT LQT.internal.Anchor|LQT.AnchorTarget
+---@field TOPLEFT LQT.internal.Anchor|LQT.AnchorTarget
+---@field CENTER LQT.internal.Anchor|LQT.AnchorTarget
 
 
 function StyleAttributes:TOP() return setmetatable({ 'TOP', self }, AnchorMt) end
