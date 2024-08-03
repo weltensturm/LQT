@@ -9,16 +9,14 @@ local internal = LQT.internal
 
 local IsStyle = LQT.internal.IsStyle
 local IsFrameProxy = LQT.IsFrameProxy
-local FrameProxyTargetKey = LQT.FrameProxyTargetKey
-local ApplyFrameProxy = LQT.ApplyFrameProxy
-local run_head = LQT.internal.run_head
+local CompileFrameProxy = LQT.CompileFrameProxy
+local FrameProxyParentKey = LQT.FrameProxyParentKey
 
 local ACTION = LQT.internal.FIELDS.ACTION
 local ARGS = LQT.internal.FIELDS.ARGS
 local CONSTRUCTOR = LQT.internal.FIELDS.CONSTRUCTOR
 local CONTEXT = LQT.internal.FIELDS.CONTEXT
 local COMPILED = LQT.internal.FIELDS.COMPILED
-local BOUND_FRAME = LQT.internal.FIELDS.BOUND_FRAME
 local CLASS = LQT.internal.FIELDS.CLASS
 
 local chain_extend = LQT.internal.chain_extend
@@ -38,6 +36,11 @@ end
 local COMPILED_FN_ENV = LQT.internal.COMPILED_FN_ENV
 
 
+local function IsNice(str)
+    return str:match('^[_%a][_%w]+$')
+end
+
+
 local CompilerMT = {
     __index = {
         append = function(self, ...)
@@ -53,11 +56,15 @@ local CompilerMT = {
                 if type(var) == 'number' and not tostring(var):find('%a') then
                     code = code:gsub('{' .. i .. '}', var)
                 elseif type(var) == 'string' then
-                    code = code:gsub('{' .. i .. '}', ' [==[' .. var .. ']==]')
+                    if IsNice(var) then
+                        code = code:gsub('{' .. i .. '}', '"' .. var .. '"')
+                    else
+                        code = code:gsub('{' .. i .. '}', ' [==[' .. var .. ']==]')
+                    end
                 elseif type(var) == 'nil' then
                     assert(false, 'Argument ' .. i .. ' is nil')
                 else
-                    code = code:gsub('{' .. i .. '}', 'args[' .. #self[2]+1 .. ']')
+                    code = code:gsub('{' .. i .. '}', 'args[{i}][' .. #self[2]+1 .. ']')
                     self[2][#self[2]+1] = var
                 end
             end
@@ -67,36 +74,8 @@ local CompilerMT = {
             self[3] = static
         end,
         compile = function(self, context)
-            local fn, error = loadstring(self[1], context)
-
-            -- if not fn then
-            --     local lineno = error --[[@as string]]:match('(%d+): ')
-            --     local l = 0
-            --     for line in self[1]:gmatch('(.-)\n') do
-            --         l = l + 1
-            --         if l == lineno then
-            --             assert(false, error .. ': ' .. line)
-            --         end
-            --     end
-            -- end
-            -- local function onError(msg)
-            --     local lineno = tonumber(msg:match('(%d+): '))
-            --     local l = 0
-            --     for line in self[1]:gmatch('(.-)\n') do
-            --         l = l + 1
-            --         if l == lineno then
-            --             CallErrorHandler(msg .. ': ' .. line)
-            --             return
-            --         end
-            --     end
-            -- end
-            -- local fn2 = function(...)
-            --     return select(2, xpcall(fn --[[@as function]], onError, ...))
-            -- end
-
-            return
-                assert(fn, error),
-                self[2]
+            local fn = assert(loadstring(self[1], context))
+            return fn, self[2]
         end
     }
 }
@@ -149,7 +128,7 @@ local function CompileBody(parentClass, arg, context)
             elseif IsStyle(value) then
                 internal.CompileChain(value)
                 if type(key) == 'string' then
-                    if key:sub(1, 1) ~= '.' then
+                    if IsNice(key) then
                         assert(value[CONSTRUCTOR], 'Style has no constructor: ' .. value[CONTEXT])
                         assert(not class[key], 'Cannot shadow ' .. key .. ' of parent class')
                         class[key] = value
@@ -186,80 +165,82 @@ local function CompileBody(parentClass, arg, context)
     }
 
     code:append('-- ' .. context)
-    code:append('local widget, parent_if_constructed, args, {env} = ...')
 
     for i=1, #attributes do
         local k, v = attributes[i][1], attributes[i][2]
         if IsFrameProxy(v) then
-            code:append(k, v, [[
-                if not widget[{1}] then
-                    widget[{1}] = ApplyFrameProxy(widget, {2})
-                end
-            ]])
+            local compiled = CompileFrameProxy(v)
+            code:append(k, compiled,
+                'if not self[{1}] then\n' ..
+                '    self[{1}] = {2}(self)\n' ..
+                'end\n'
+            )
         elseif type(v) == 'table' and not next(v) and not getmetatable(v) then
-            code:append(k, 'widget[{1}] = {}')
+            code:append(k, 'self[{1}] = {}')
         else
-            code:append(k, v, 'widget[{1}] = {2}')
+            code:append(k, v, 'self[{1}] = {2}')
         end
     end
 
     for i=1, #childrenCreate do
         local k, v = childrenCreate[i][1], childrenCreate[i][2]
-        code:append(k, v[CONSTRUCTOR], v[CLASS], [[
-            if not widget[{1}] then
-                widget[{1}] = {2}(widget)
-                widget[{1}]['lqt.class'] = {3}
-            end
-        ]])
+        code:append(k, v[CONSTRUCTOR], v[CLASS], v,
+            'if not self[{1}] then\n' ..
+            '    self[{1}] = {2}(self)\n' ..
+            '    self[{1}]["lqt.class"] = {3}\n' ..
+            '    self[{1}]["lqt.style"] = {4}\n' ..
+            'end\n'
+        )
     end
 
     for i=1, #children do
         local k, v = children[i][1], children[i][2]
-        if k and k:sub(1, 1) == '.' then
-            code:append(k, v[COMPILED], [[
-                local StyleChildren = {2}[1]
-                for child in query(widget, {1}) do
-                    StyleChildren(child, widget, {2}[2], {env})
-                end
-            ]])
+        if k and IsNice(k) then
+            code:append(k, v[COMPILED],
+                'local __style_' .. k .. ' = {2}[1] --' .. v[CONTEXT] .. '\n' ..
+                '__style_' .. k .. '(self[{1}], self, {2}[2], {env})\n'
+            )
         elseif k then
-            code:append(k, v[COMPILED], [[
-                local StyleChild = {2}[1]
-                StyleChild(widget[{1}], widget, {2}[2], {env})
-            ]])
+            code:append(k, v[COMPILED],
+                'local StyleChildren = {2}[1]\n' ..
+                'for child in query(self, {1}) do\n' ..
+                '    StyleChildren(child, self, {2}[2], {env})\n' ..
+                'end\n'
+            )
         else
-            code:append(v[COMPILED][1], v[COMPILED][2], [[
-                local Style = {1}
-                Style(widget, parent_if_constructed, {2}, {env})
-            ]])
+            code:append(v[COMPILED][1], v[COMPILED][2],
+                'local Style = {1}\n' ..
+                'Style(self, parent_if_constructed, {2}, {env})\n'
+            )
         end
     end
 
     for i=1, #preInitialize do
         if type(preInitialize[i]) == 'table' and IsFrameProxy(preInitialize[i][1]) then
             local proxy, fn = preInitialize[i][1], preInitialize[i][2]
-            code:append(proxy, fn, FrameProxyTargetKey, [[
-                local proxyTarget, proxyKey = {3}(widget, {1})
-                assert(proxyKey, 'Cannot hook ' .. tostring(proxy))
-                if widget == proxyTarget then
-                    hooksecurefunc(widget, proxyKey, {2})
+            local compiled, key = FrameProxyParentKey(proxy)
+            code:append(compiled, key, fn, [[
+                local proxyTarget = {1}(self)
+                if self == proxyTarget then
+                    hooksecurefunc(self, {2}, {3})
                 else
-                    hooksecurefunc(proxyTarget, proxyKey, function(...)
-                        {2}(widget, ...)
+                    hooksecurefunc(proxyTarget, {2}, function(...)
+                        {3}(self, ...)
                     end)
                 end
             ]])
         else
-            code:append(preInitialize[i], '{1}(widget, parent_if_constructed)')
+            code:append(preInitialize[i], '{1}(self, parent_if_constructed)')
         end
     end
 
     for i=1, #initialize do
         local k, v = initialize[i][1], initialize[i][2]
         if type(v) == 'function' then
-            code:append(v, '{1}(widget, parent_if_constructed)')
+            code:append(v, '{1}(self, parent_if_constructed)')
         elseif k and IsFrameProxy(v) then
-            code:append(k, v, 'widget[{1}] = ApplyFrameProxy(widget, {2})')
+            local compiled = CompileFrameProxy(v)
+            code:append(k, compiled, 'self[{1}] = {2}(self)')
         else
             assert(false, 'Not implemented')
         end
@@ -270,10 +251,12 @@ local function CompileBody(parentClass, arg, context)
         codeCount = codeCount + 1
     end
     class['__code_' .. codeCount] = code[1]
+    class['__code_' .. codeCount .. '_args'] = code[2]
 
-    local fn, args = code:compile(context:gsub('%[string "(@.*)"%]:(%d+).*', '%1:%2') .. ':{}')
+    -- local fn, args = code:compile(context:gsub('%[string "(@.*)"%]:(%d+).*', '%1<LQT>:%2') .. ':{}')
+    -- return fn, args, class
 
-    return fn, args, class
+    return code[1], code[2], class
 end
 
 
@@ -283,10 +266,9 @@ function internal.CompileBody(style, arg, context)
         error('Cannot call CompileBody with ' .. type(arg))
     end
     context = context or get_context(4)
-    local compiled, compiledargs, class = CompileBody(style[CLASS], arg, context)
-    local action = chain_extend(style, { [ACTION]=compiled, [ARGS]=compiledargs, [CONTEXT]=context, [CLASS]=class })
-    if action[BOUND_FRAME] then
-        run_head(action)
-    end
-    return action
+    -- local compiled, compiledargs, class = CompileBody(style[CLASS], arg, context)
+    -- return chain_extend(style, { [ACTION]=compiled, [ARGS]=compiledargs, [CONTEXT]=context, [CLASS]=class })
+
+    local code, args, class = CompileBody(style[CLASS], arg, context)
+    return chain_extend(style, { [ACTION]=code, [ARGS]=args, [CONTEXT]=context, [CLASS]=class })
 end

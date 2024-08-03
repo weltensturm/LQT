@@ -4,8 +4,8 @@ local Addon = select(2, ...)
 ---@class LQT
 local LQT = Addon.LQT
 
+local chain_extend = LQT.internal.chain_extend
 local get_context = LQT.internal.get_context
-local FrameExtensions = LQT.FrameExtensions
 local FrameProxyTargetKey = LQT.FrameProxyTargetKey
 local IsFrameProxy = LQT.IsFrameProxy
 
@@ -27,11 +27,28 @@ local ChainFunctions = function(t)
 end
 
 
+LQT.UnitEventBase = chain_extend(nil, {}) {
+    SetEventUnit = function(self, unit, fireAll)
+        if not unit then
+            error('Unit is nil')
+        end
+        for event, fn in pairs(self.lqtUnitEvents or {}) do
+            self:UnregisterEvent(event)
+            self:RegisterUnitEvent(event, unit)
+            if fireAll then
+                fn(self)
+            end
+        end
+    end
+}
+
+
 local UnitEventMt = {
     lqtKeyCompile = function(key, cb)
         local context = key[2]
         key = key[1]
         return function(self, parent)
+            assert(self.SetEventUnit, 'Cannot hook UnitEvent without inheriting UnitEventBase')
             if not self.lqtUnitEvents then
                 self.lqtUnitEvents = self.lqtUnitEvents or {}
                 self:HookScript('OnEvent', function(self, event, ...)
@@ -40,7 +57,6 @@ local UnitEventMt = {
                         handler(self, ...)
                     end
                 end)
-                self.SetEventUnit = self.SetEventUnit or FrameExtensions.SetEventUnit
             end
             self.lqtUnitEventsLibrary = self.lqtUnitEventsLibrary or {}
 

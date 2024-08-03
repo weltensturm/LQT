@@ -9,177 +9,217 @@ local FrameProxy
 local FrameProxyMt
 local ApplyFrameProxy
 
+local stringbyte = string.byte
 
 local get_context = function()
     return strsplittable('\n', debugstack(3,0,1) or '')[1]
 end
 
 
-local FN = '__FrameProxy_fn'
-local CONTEXT = '__FrameProxy_context'
-local TEXT =  '__FrameProxy_text'
-local KEY =  '__FrameProxy_key'
+-- Sentinel magic
+local CODE = {}
+local CONTEXT = {}
+local KEY = {}
+local COMPILED = {}
+local ARGS = {}
+local PARENT = {}
+
+
+local function mergeLists(t1, t2)
+    if not t1 then
+        return t2
+    end
+    local result = {}
+    for i=1,#t1 do
+        result[i] = t1[i]
+    end
+    local t1size = #t1
+    for i=1,#t2 do
+        result[t1size+i] = t2[i]
+    end
+    return result
+end
+
+
+local SLOT_BYTE = stringbyte('\v', 1)
+
+local function slots(count)
+    if count > 1 then
+        return string.rep('\v, ', count)
+    elseif count == 1 then
+        return '\v'
+    else
+        return ''
+    end
+end
 
 
 FrameProxyMt = {
     __call = function(proxy, selfMaybe, ...)
         if getmetatable(selfMaybe) == FrameProxyMt then
-            local fn = rawget(proxy, FN)
-            local args = { ... }
+            local parent_code = rawget(rawget(proxy, PARENT), CODE)
+            local key = rawget(proxy, KEY)
+            local args = mergeLists(rawget(proxy, ARGS), { ... })
             return FrameProxy(
-                function(root)
-                    local result, frame = fn(root)
-                    assert(result ~= nil, rawget(proxy, CONTEXT) .. rawget(proxy, TEXT) .. ' is nil')
-                    return result(frame, unpack(args))
-                end,
+                parent_code .. ':' .. key .. '(' .. slots(#args) .. ')',
+                args,
                 get_context(),
-                rawget(proxy, TEXT) .. '(self, ...)'
+                nil,
+                proxy
             )
         else
-            local fn = rawget(proxy, FN)
             local args = { selfMaybe, ... }
             return FrameProxy(
-                function(root)
-                    local result = fn(root)
-                    assert(result ~= nil, rawget(proxy, CONTEXT) .. ' ' .. rawget(proxy, TEXT) .. ' is nil')
-                    return result(unpack(args))
-                end,
+                rawget(proxy, CODE) .. '({})',
+                mergeLists(rawget(proxy, ARGS), args),
                 get_context(),
-                rawget(proxy, TEXT) .. '(...)'
+                nil,
+                proxy
             )
         end
     end,
     __index = function(self, attr)
-        if
-            attr == CONTEXT
-            or attr == FN
-            or attr == TEXT
-            or attr == KEY
-        then
-            return rawget(self, attr)
-        end
-        local fn = rawget(self, FN)
         return FrameProxy(
-            function(root)
-                local result = fn(root)
-                assert(result ~= nil, rawget(self, CONTEXT) .. ' ' .. rawget(self, TEXT) .. ' is nil')
-                return result[attr], result
-            end,
+            rawget(self, CODE) .. '.' .. attr,
+            nil,
             get_context(),
-            rawget(self, TEXT) .. '.' .. attr,
-            attr
+            attr,
+            self
         )
     end,
     __tostring = function(self)
-        return rawget(self, TEXT)
+        return rawget(self, CODE)
     end,
-    __add = function(self, num)
-        local fn = rawget(self, FN)
-        if getmetatable(num) == FrameProxyMt then
+    __add = function(self, other)
+        if getmetatable(other) == FrameProxyMt then
             return FrameProxy(
-                function(root)
-                    return fn(root) + ApplyFrameProxy(root, num)
-                end,
+                '(' .. rawget(self, CODE) .. ' + ' .. rawget(other, CODE) .. ')',
+                mergeLists(rawget(self, ARGS), rawget(other, ARGS)),
                 get_context(),
-                rawget(self, TEXT) .. ' + ' .. tostring(num)
+                nil,
+                self
             )
         else
             return FrameProxy(
-                function(root)
-                    return fn(root) + num
-                end,
+                '(' .. rawget(self, CODE) .. ' + ' .. other .. ')',
+                nil,
                 get_context(),
-                rawget(self, TEXT) .. ' + ' .. num
+                nil,
+                self
             )
         end
     end,
-    __sub = function(self, num)
-        local fn = rawget(self, FN)
-        if getmetatable(num) == FrameProxyMt then
+    __sub = function(self, other)
+        if getmetatable(other) == FrameProxyMt then
             return FrameProxy(
-                function(root)
-                    return fn(root) - ApplyFrameProxy(root, num)
-                end,
+                '(' .. rawget(self, CODE) .. ' - ' .. rawget(other, CODE) .. ')',
+                mergeLists(rawget(self, ARGS), rawget(other, ARGS)),
                 get_context(),
-                rawget(self, TEXT) .. ' - ' .. tostring(num)
+                nil,
+                self
             )
         else
             return FrameProxy(
-                function(root)
-                    return fn(root) - num
-                end,
+                '(' .. rawget(self, CODE) .. ' - ' .. other .. ')',
+                nil,
                 get_context(),
-                rawget(self, TEXT) .. ' - ' .. num
+                nil,
+                self
             )
         end
     end,
-    __mul = function(self, num)
-        local fn = rawget(self, FN)
-        if getmetatable(num) == FrameProxyMt then
+    __mul = function(self, other)
+        if getmetatable(other) == FrameProxyMt then
             return FrameProxy(
-                function(root)
-                    return fn(root) * ApplyFrameProxy(root, num)
-                end,
+                '(' .. rawget(self, CODE) .. ' * ' .. rawget(other, CODE) .. ')',
+                mergeLists(rawget(self, ARGS), rawget(other, ARGS)),
                 get_context(),
-                rawget(self, TEXT) .. ' * ' .. tostring(num)
+                nil,
+                self
             )
         else
             return FrameProxy(
-                function(root)
-                    return fn(root) * num
-                end,
+                '(' .. rawget(self, CODE) .. ' * ' .. other .. ')',
+                nil,
                 get_context(),
-                rawget(self, TEXT) .. ' * ' .. num
+                nil,
+                self
             )
         end
     end,
-    __div = function(self, num)
-        local fn = rawget(self, FN)
-        if getmetatable(num) == FrameProxyMt then
+    __div = function(self, other)
+        if getmetatable(other) == FrameProxyMt then
             return FrameProxy(
-                function(root)
-                    return fn(root) / ApplyFrameProxy(root, num)
-                end,
+                '(' .. rawget(self, CODE) .. ' / ' .. rawget(other, CODE) .. ')',
+                mergeLists(rawget(self, ARGS), rawget(other, ARGS)),
                 get_context(),
-                rawget(self, TEXT) .. ' / ' .. tostring(num)
+                nil,
+                self
             )
         else
             return FrameProxy(
-                function(root)
-                    return fn(root) / num
-                end,
+                '(' .. rawget(self, CODE) .. ' / ' .. other .. ')',
+                nil,
                 get_context(),
-                rawget(self, TEXT) .. ' / ' .. num
+                nil,
+                self
             )
         end
     end
 }
 
 ---@return LQT.AnyWidget | table<string, any>
-FrameProxy = function(fn, context, text, key)
+FrameProxy = function(code, args, context, key, parent)
     return setmetatable(
         {
-            [FN] = fn or function(root) return root end,
+            [CODE] = code or 'self',
+            [ARGS] = args or parent and rawget(parent, ARGS),
             [CONTEXT] = context or get_context(),
-            [TEXT] = text or 'self',
-            [KEY] = key
+            [KEY] = key,
+            [PARENT] = parent,
         },
         FrameProxyMt
     )
 end
 
-ApplyFrameProxy = function(frame, proxy)
-    local result, _ = rawget(proxy, FN)(frame, frame)
-    return assert(result, rawget(proxy, TEXT) .. ' is nil')
+
+local function CompileFrameProxy(proxy)
+    local txt_orig = rawget(proxy, CODE)
+    local arg_idx = 0
+    local txt = txt_orig:gsub('\v', function()
+        arg_idx = arg_idx + 1
+        return 'args[' .. arg_idx .. ']'
+    end)
+
+    local file, line = rawget(proxy, CONTEXT):match('%[string "(@.*)"%]:(%d+).*')
+
+    local fn = assert(
+        loadstring(
+            string.rep('\n', (line or 1)-1) ..
+            'local args = ...; ' ..
+            'return function(self) ' ..
+                'return assert(' .. txt .. ', "' .. txt .. ' is nil") ' ..
+            'end',
+            (file or '@unknown') .. '<LQT>'
+        )
+    )
+    rawset(proxy, COMPILED, fn(rawget(proxy, ARGS)))
+    return rawget(proxy, COMPILED)
 end
+
 
 ---@param frame LQT.AnyWidget
 ---@return LQT.AnyWidget target
 ---@return string attribute
 local FrameProxyTargetKey = function(frame, proxy)
-    local result, target = rawget(proxy, FN)(frame, frame)
-    assert(result, rawget(proxy, TEXT) .. ' is nil')
+    local target = CompileFrameProxy(rawget(proxy, PARENT))(frame)
     return target, rawget(proxy, KEY)
+end
+
+
+local FrameProxyParentKey = function(proxy)
+    local parent = CompileFrameProxy(rawget(proxy, PARENT))
+    return parent, rawget(proxy, KEY)
 end
 
 
@@ -188,25 +228,25 @@ local function IsFrameProxy(value)
 end
 
 
-LQT.ApplyFrameProxy = ApplyFrameProxy
+LQT.CompileFrameProxy = CompileFrameProxy
 LQT.FrameProxyTargetKey = FrameProxyTargetKey
+LQT.FrameProxyParentKey = FrameProxyParentKey
 LQT.FrameProxy = FrameProxy
 LQT.FrameProxyMt = FrameProxyMt
 LQT.IsFrameProxy = IsFrameProxy
 
----@type any
+---@type ScriptRegion|any
 LQT.SELF = FrameProxy()
 
----@type any
+---@type ScriptRegion|any
 LQT.PARENT = FrameProxy():GetParent()
 
 
---[[#
-
+--[[
 local frame = CreateFrame('Frame', nil, UIParent)
 frame:SetSize(20, 32)
-assert(ApplyFrameProxy(frame, LQT.PARENT) == frame:GetParent())
-assert(ApplyFrameProxy(frame, LQT.PARENT:GetName()) == 'UIParent')
-assert(ApplyFrameProxy(frame, LQT.SELF:GetWidth() + LQT.SELF:GetHeight()) == 52)
-
---]]
+assert(CompileFrameProxy(LQT.SELF)(frame) == frame)
+assert(CompileFrameProxy(LQT.PARENT)(frame) == frame:GetParent())
+assert(CompileFrameProxy(LQT.PARENT:GetName())(frame) == 'UIParent')
+assert(CompileFrameProxy(LQT.SELF:GetWidth() + LQT.SELF:GetHeight())(frame) == frame:GetWidth() + frame:GetHeight())
+]]

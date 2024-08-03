@@ -7,7 +7,6 @@
 __init__.lua
 FrameProxy.lua
 query.lua
-FrameExtensions.lua
 LQTCommon.lua
 StyleMeta.lua
 StyleAnchors.lua

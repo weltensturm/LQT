@@ -22,6 +22,11 @@ local function ForTuple(fn, ...)
 end
 
 
+local function IsIdentifierName(str)
+    return str:match('^[_%a][_%w]+$')
+end
+
+
 local function matches(obj, selector, parent)
     if selector == '*' then
         return true
@@ -162,122 +167,243 @@ end
 
 
 local pattern_cache = {}
-local compile_pattern = function(str)
-    if pattern_cache[str] then return pattern_cache[str]() end
-    local multipattern
-    local index_selector, index_remainder
-    local global_selector, global_remainder
+local function compile_pattern(str)
+    if pattern_cache[str] then return pattern_cache[str] end
+
     if str:find(',') then
-        multipattern = {}
+        local multipattern = {}
         for part in str:gmatch('%s*([^,]+)') do
-            table.insert(multipattern, part)
+            table.insert(multipattern, compile_pattern(part))
         end
-    elseif str:sub(1, 1) == '.' then
-        str = str:sub(2)
-        index_selector, index_remainder = split_at_find(str, '[%.%s]')
-        index_remainder = strtrim(index_remainder)
-        if tonumber(index_selector) ~= nil then
-            index_selector = tonumber(index_selector)
+        local fn = function(obj, fn)
+            for i=1, #multipattern do
+                multipattern[i](obj, fn)
+            end
         end
+        pattern_cache[str] = fn
+        return fn
     else
-        global_selector, global_remainder = split_at_find(str, '[%.%s]')
-        global_remainder = strtrim(global_remainder)
+        local selector, remainder = str:match('^([^>]*)>?(.*)$') -- split_at_find(str, '[>%s]')
+        selector = strtrim(selector)
+        remainder = strtrim(remainder)
+
+        local iter_regions = false
+        local iter_anim = false
+        local iter_children = false
+        local conditions = {}
+
+        local class = nil
+        local class_code = nil
+        local attribute = nil
+        local attribute_code = nil
+        local attribute_complex = nil
+        local global_name = nil
+        local global_name_code = nil
+        local global_name_complex = nil
+
+        for char, identifier in selector:gmatch '([%.%:%@])%s*([^%.%:%@]+)' do
+            assert(not conditions[char], 'Same element cannot have multiple `' .. char .. '` selectors')
+            conditions[char] = identifier
+            if char == '@' then
+                assert(not identifier:find('%*') and not identifier:find('#'), 'Complex matching for classes not supported')
+                iter_regions = true -- TODO: CLASSES_REGIONS[identifier]
+                iter_anim = true -- TODO: CLASSES_ANIM[identifier]
+                iter_children = true -- TODO: CLASSES_CHILDREN[identifier]
+                class = identifier
+                class_code = 'child:GetObjectType() == "' .. identifier .. '"'
+            elseif char == '.' then
+                if identifier == '*' then
+                    iter_regions, iter_anim, iter_children = true, true, true
+                    attribute = ''
+                    attribute_code = 'true'
+                    attribute_complex = true
+                elseif identifier == '\0' then
+                    iter_regions, iter_anim, iter_children = true, true, true
+                    attribute_code = 'attrs[child] == nil'
+                    attribute = ''
+                    attribute_complex = true
+                elseif not IsIdentifierName(identifier) then
+                    iter_regions, iter_anim, iter_children = true, true, true
+                    attribute = '^' .. identifier:gsub("%*", ".*"):gsub("#", "%%d+") .. '$'
+                    attribute_code = 'attrs[child] and attrs[child]:match("' .. attribute .. '")'
+                    attribute_complex = true
+                else
+                    attribute = identifier
+                    attribute_code = 'not_used!'
+                    attribute_complex = false
+                end
+            elseif char == ':' then
+                if not IsIdentifierName(identifier) then
+                    iter_regions, iter_anim, iter_children = true, true, true
+                    global_name_complex = true
+                    global_name = '^' .. identifier:gsub("%*", ".*"):gsub("#", "%%d+") .. '$'
+                    global_name_code = 'child:GetName() and child:GetName():match("' .. global_name .. '")'
+                else
+                    global_name_complex = false
+                    global_name_code = 'child:GetName() == ' .. identifier
+                    global_name = identifier
+                end
+            end
+        end
+
+        assert(class or attribute or global_name, 'Invalid pattern `' .. selector .. '`')
+
+        local remainder_compiled = nil
+        if #remainder > 0 then
+            remainder_compiled = compile_pattern(remainder)
+        end
+
+        local code_apply
+        if remainder_compiled then
+            code_apply = 'remainder_compiled(child, fn)'
+        else
+            code_apply = 'fn(child)'
+        end
+
+        local code = 'local obj, fn, remainder_compiled = ...\n' ..
+                     'if not obj.GetRegions or not obj.GetChildren then return end\n'
+
+        if attribute and not attribute_complex then
+            assert(not class, 'Cannot combine simple attribute with class selector')
+            assert(not global_name, 'Cannot combine simple attribute with global name selector')
+            if tonumber(attribute) then
+                code = code ..
+                    'local child = obj[' .. attribute .. ']\n' ..
+                    'if child and child:GetParent() == obj then\n' ..
+                    '    ' .. code_apply .. '\n' ..
+                    'end'
+            else
+                code = code ..
+                    'local child = obj.' .. attribute .. '\n' ..
+                    'if child and child:GetParent() == obj then\n' ..
+                    '    ' .. code_apply .. '\n' ..
+                    'end'
+            end
+        elseif global_name and not global_name_complex then
+            assert(not attribute, 'Cannot combine simple global name with attribute')
+            assert(not class, 'Cannot combine simple global name with class selector')
+            code = code ..
+                'local child = _G.' .. global_name .. '\n' ..
+                'if child and child:GetParent() == obj then\n' ..
+                '    ' .. code_apply .. '\n' ..
+                'end'
+        else
+            local match_code = ''
+
+            if attribute_code then
+                match_code = attribute_code
+                if attribute_code ~= 'true' then
+                    code = code .. 'local attrs = {}\n' ..
+                                   'for k, v in pairs(obj) do\n' ..
+                                   '    attrs[v] = k\n' ..
+                                   'end\n'
+                end
+            end
+
+            if global_name_code then
+                if #match_code > 0 then
+                    match_code = match_code .. ' and ' .. global_name_code
+                else
+                    match_code = global_name_code
+                end
+            end
+
+            if class_code then
+                if #match_code > 0 then
+                    match_code = match_code .. ' and ' .. class_code
+                else
+                    match_code = class_code
+                end
+            end
+
+            code = code ..
+                'local function apply(...)\n' ..
+                '    for i=1, select(\'#\', ...) do\n' ..
+                '        local child = select(i, ...)\n' ..
+                '        if ' .. match_code .. ' then\n' ..
+                '            ' .. code_apply .. '\n' ..
+                '        end\n' ..
+                '    end\n' ..
+                'end\n'
+
+            if iter_regions then
+                code = code .. 'apply(obj:GetRegions())\n'
+            end
+            if iter_children then
+                code = code .. 'apply(obj:GetChildren())\n'
+            end
+            if iter_anim then
+                code = code .. 'apply(obj:GetAnimationGroups())\n'
+            end
+        end
+
+        local compiled
+        local intermediate = assert(loadstring(code))
+        if remainder_compiled then
+            compiled = function(obj, fn)
+                intermediate(obj, fn, remainder_compiled)
+            end
+        else
+            compiled = intermediate
+        end
+        pattern_cache[str] = compiled
+        return compiled
     end
-    local compiled = function()
-        return
-            multipattern,
-            index_selector,
-            index_remainder,
-            global_selector,
-            global_remainder
-    end
-    pattern_cache[str] = compiled
-    return compiled()
 end
 
 
-local function query(obj, pattern, found)
+local function query(obj, pattern)
     if not obj.GetRegions or not obj.GetChildren then return queryResult {} end
     if type(pattern) == 'table' then
         return apply_style({ obj }, pattern)
     end
-    local root = not found
-    found = found or {}
-    local
-        multipattern,
-        index_selector,
-        index_remainder,
-        global_selector,
-        global_remainder
-            = compile_pattern(pattern)
-    if multipattern then
-        for i = 1, #multipattern do
-            query(obj, multipattern[i], found)
-        end
-    elseif obj ~= UIParent and index_selector then
-        if #index_remainder == 0 then
-            if constructor then
-                if not obj[index_selector] or obj[index_selector]:GetParent() ~= obj then
-                    obj[index_selector] = constructor(obj)
-                end
-                return queryResult { obj[index_selector] }
-            end
-        end
 
-        ForTuple(
-            function(child)
-                if not found[child] and matches(child, index_selector, obj) then
-                    if #index_remainder == 0 then
-                        found[child] = true
-                    else
-                        query(child, index_remainder, found)
-                    end
-                end
-            end,
-            obj:GetRegions()
-        )
-        ForTuple(
-            function(child)
-                if not found[child] and matches(child, index_selector, obj) then
-                    if #index_remainder == 0 then
-                        found[child] = true
-                    else
-                        query(child, index_remainder, found)
-                    end
-                end
-            end,
-            obj:GetChildren()
-        )
-        ForTuple(
-            function(child)
-                if not found[child] and matches(child, index_selector, obj) then
-                    if #index_remainder == 0 then
-                        found[child] = true
-                    else
-                        query(child, index_remainder, found)
-                    end
-                end
-            end,
-            obj:GetAnimationGroups()
-        )
-    else
-        assert(obj == UIParent)
-        if #global_remainder > 0 then
-            query(_G[global_selector], global_remainder, found)
-        elseif _G[global_selector] then
-            found[_G[global_selector]] = true
-        end
-    end
-    if root then
-        local result = {}
-        for frame, _ in pairs(found) do
-            table.insert(result, frame)
-        end
-        return queryResult(result)
-    end
+    local compiled = compile_pattern(pattern)
+
+    local result = {}
+    compiled(obj, function(child)
+        table.insert(result, child)
+    end)
+    return queryResult(result)
+
 end
 
 
 LQT.query = query
 LQT.matches = matches
+
+
+if false then
+
+    local root = CreateFrame('Frame') --[[@as any]]
+    root.child1 = CreateFrame('Frame', nil, root) --[[@as any]]
+    root.child1.child1 = CreateFrame('Frame', nil, root.child1) --[[@as any]]
+    root.child2 = CreateFrame('Frame', nil, root) --[[@as any]]
+    root.child3 = root:CreateFontString() --[[@as any]]
+
+    for child in query(root, '.child1') do
+        child.first = true
+    end
+    assert(root.child1.first)
+
+    for child in query(root, '@Frame') do
+        child.frame = true
+    end
+    assert(root.child1.frame)
+    assert(root.child2.frame)
+    assert(not root.child3.frame)
+
+    for child in query(root, '.*') do
+       child.all = true
+    end
+    assert(root.child1.all)
+    assert(root.child2.all)
+    assert(root.child3.all)
+
+    for child in query(root, '.child1 > .child1') do
+        child.nested = true
+    end
+    assert(root.child1.child1.nested)
+
+end
 

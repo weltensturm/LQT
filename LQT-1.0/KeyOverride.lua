@@ -6,9 +6,8 @@ local LQT = Addon.LQT
 
 
 local get_context = LQT.internal.get_context
-local FrameExtensions = LQT.FrameExtensions
 local IsFrameProxy = LQT.IsFrameProxy
-local ApplyFrameProxy = LQT.ApplyFrameProxy
+local CompileFrameProxy = LQT.CompileFrameProxy
 
 
 local OverrideMt = {
@@ -16,14 +15,15 @@ local OverrideMt = {
         local key = self[1]
         local context = self[2]
         if IsFrameProxy(cb) then
+            local compiled = CompileFrameProxy(cb)
             return function(widget, parent)
                 widget.lqtOverride = widget.lqtOverride or {}
                 if not widget.lqtOverride[context] then
-                    cb = ApplyFrameProxy(cb)
+                    local fn = compiled(widget)
                     widget.lqtOverride[context] = true
-                    local orig = widget[key] or FrameExtensions[key]
+                    local orig = widget[key]
                     widget[key] = function(self, ...)
-                        cb(self, orig, ...)
+                        fn(self, orig, ...)
                     end
                 end
             end
@@ -32,7 +32,7 @@ local OverrideMt = {
                 widget.lqtOverride = widget.lqtOverride or {}
                 if not widget.lqtOverride[context] then
                     widget.lqtOverride[context] = true
-                    local orig = widget[key] or FrameExtensions[key]
+                    local orig = widget[key]
                     widget[key] = function(self, ...)
                         cb(self, orig, ...)
                     end

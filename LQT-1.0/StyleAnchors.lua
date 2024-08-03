@@ -17,7 +17,7 @@ local AnchorMt = {}
 function AnchorMt:__index(attr)
     local point, style = self[1], self[2]
     return function(self1, target, x, y)
-        assert(self == self1, 'Cannot call .' .. attr .. ', use ' .. attr .. ':')
+        assert(self == self1, 'Cannot call .' .. attr .. ', use :' .. attr)
         if not style[CLEARS_POINTS] then
             style = chain_extend(style, { [CLEARS_POINTS]=true })
                 :ClearAllPoints()

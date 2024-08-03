@@ -8,8 +8,6 @@ local LQT = Addon.LQT
 local internal = {}
 LQT.internal = internal
 
-local ApplyFrameProxy = LQT.ApplyFrameProxy
-
 
 --[[ there is a lot of cross referencing between Style*.lua so this has to exist ]]
 
@@ -24,7 +22,7 @@ internal.StyleChainMeta = {}
 local StyleChainMeta = internal.StyleChainMeta
 
 
-internal.COMPILED_FN_ENV = 'ApplyFrameProxy, query, FrameExtensions'
+internal.COMPILED_FN_ENV = 'query'
 
 
 function internal.IsStyle(value)
@@ -52,12 +50,11 @@ local PARENT = 1
 local ACTION = 2
 local ARGS = 3
 local CONSTRUCTOR = 4
-local BOUND_FRAME = 5
-local FILTER = 6
-local COMPILED = 7
-local CONTEXT = 8
-local CLEARS_POINTS = 9
-local CLASS = 10
+local FILTER = 5
+local COMPILED = 6
+local CONTEXT = 7
+local CLEARS_POINTS = 8
+local CLASS = 9
 
 
 internal.ACTIONS = {
@@ -73,7 +70,6 @@ internal.FIELDS = {
     ACTION = ACTION,
     ARGS = ARGS,
     CONSTRUCTOR = CONSTRUCTOR,
-    BOUND_FRAME = BOUND_FRAME,
     FILTER = FILTER,
     COMPILED = COMPILED,
     CONTEXT = CONTEXT,
@@ -88,20 +84,6 @@ internal.ops = {
     end,
 }
 
-local ops = internal.ops
-
-
----@param action LQT.StyleChain
----@param object ScriptObject?
----@param constructed ScriptObject | nil
-function internal.run_head(action, object, constructed)
-    if type(action[ACTION]) == 'function' then
-        action[ACTION](object or action[BOUND_FRAME], constructed, action[ARGS], ApplyFrameProxy, LQT.query, LQT.FrameExtensions)
-    else
-        ops[action[ACTION]](object or action[BOUND_FRAME], action[ARGS], constructed)
-    end
-end
-
 
 function internal.chain_extend(parent, new)
     local action = {
@@ -109,7 +91,6 @@ function internal.chain_extend(parent, new)
         [ACTION]       = new[ACTION]       or NOOP,
         [ARGS]         = new[ARGS]         or {},
         [CONSTRUCTOR]  = new[CONSTRUCTOR]  or parent and parent[CONSTRUCTOR] or false,
-        [BOUND_FRAME]  = new[BOUND_FRAME]  or parent and parent[BOUND_FRAME] or false,
         [FILTER]       = new[FILTER] and (parent and parent[FILTER] and function(obj) return parent[FILTER](obj) and new[FILTER](obj) end
                                                                      or new[FILTER])
                                       or parent and parent[FILTER]

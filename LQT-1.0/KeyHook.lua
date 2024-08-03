@@ -6,9 +6,8 @@ local LQT = Addon.LQT
 
 
 local get_context = LQT.internal.get_context
-local FrameExtensions = LQT.FrameExtensions
 local IsFrameProxy = LQT.IsFrameProxy
-local ApplyFrameProxy = LQT.ApplyFrameProxy
+local CompileFrameProxy = LQT.CompileFrameProxy
 
 
 local HookMt = {
@@ -16,10 +15,11 @@ local HookMt = {
         local key = self[1]
         local context = self[2]
         if IsFrameProxy(cb) then
+            local compiled = CompileFrameProxy(cb)
             return function(widget, parent)
                 widget.lqtHook = widget.lqtHook or {}
                 if not widget.lqtHook[context] then
-                    local fn = ApplyFrameProxy(widget, cb)
+                    local fn = compiled(widget)
                     assert(fn, tostring(cb) .. ' is '.. tostring(fn) .. '\n' .. context)
                     widget.lqtHook[context] = context
                     hooksecurefunc(widget, key, fn)
@@ -30,10 +30,6 @@ local HookMt = {
                 widget.lqtHook = widget.lqtHook or {}
                 if not widget.lqtHook[context] then
                     local fn = widget[key]
-                    if not fn and FrameExtensions[key] then
-                        widget[key] = FrameExtensions[key]
-                        fn = widget[key]
-                    end
                     assert(fn, 'Cannot hook '.. tostring(fn) .. '\n' .. context)
                     widget.lqtHook[context] = context
                     hooksecurefunc(widget, key, cb)

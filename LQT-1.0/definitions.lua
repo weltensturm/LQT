@@ -25,6 +25,7 @@ local LQT = {}
 
 ---@class LQT.StyleChain: LQT.StyleFunctionProxy
 ---@class LQT.StyleChain: LQT.internal.StyleAttributes
+---@field new fun(parent: ScriptRegion|LQT.AnyWidget?, globalName: string?): LQT.AnyWidget
 ---@field [string] fun(self: LQT.AnyWidget|any, ...): LQT.StyleChain
 ---@overload fun(a: LQT.ClassBody): LQT.StyleChain
 ---@operator concat(LQT.StyleChain): LQT.StyleChain
@@ -41,11 +42,11 @@ local StyleFunctionProxy = {}
 function StyleFunctionProxy.constructor(constructor) end
 
 
----@generic T
----@param parent? LQT.AnyWidget | ScriptRegion
----@param globalName string?
----@return Region
-function StyleFunctionProxy.new(parent, globalName, ...) end
+-- ---@generic T
+-- ---@param parent? LQT.AnyWidget | ScriptRegion
+-- ---@param globalName string?
+-- ---@return Region
+-- function StyleFunctionProxy.new(parent, globalName, ...) end
 
 
 

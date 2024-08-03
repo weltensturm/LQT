@@ -27,45 +27,47 @@ local ChainFunctions = function(t)
     return fn
 end
 
+local HOOKS = setmetatable({}, {__mode='k'})
+local HOOKS_LIBRARY = setmetatable({}, {__mode='k'})
 
 local EventMt = {
     lqtKeyCompile = function(self, cb)
         local key = self[1]
         local context = self[2]
         return function(widget, parent)
-            if not widget.lqtEventHooks then
-                widget.lqtEventHooks = widget.lqtEventHooks or {}
+            if not HOOKS[widget] then
+                HOOKS[widget] = HOOKS[widget] or {}
                 widget:HookScript('OnEvent', function(self, event, ...)
-                    local handler = self.lqtEventHooks[event]
+                    local handler = HOOKS[self][event]
                     if handler then
                         handler(self, ...)
                     end
                 end)
             end
-            widget.lqtEventHooksLibrary = widget.lqtEventHooksLibrary or {}
+            if not HOOKS[widget][key] then
+                widget:RegisterEvent(key)
+            end
+
+            HOOKS_LIBRARY[widget] = HOOKS_LIBRARY[widget] or {}
 
             if IsFrameProxy(cb) then
                 local target, targetKey = FrameProxyTargetKey(widget, cb)
-                widget.lqtEventHooksLibrary[context or get_context()] = {
+                HOOKS_LIBRARY[widget][context] = {
                     [key] = function(_, ...)
                         target[targetKey](target, ...)
                     end
                 }
             else
-                widget.lqtEventHooksLibrary[context or get_context()] = { [key] = cb }
-            end
-
-            if not widget.lqtEventHooks[key] then
-                widget:RegisterEvent(key)
+                HOOKS_LIBRARY[widget][context] = { [key] = cb }
             end
 
             local build = {}
-            for context, handlers in pairs(widget.lqtEventHooksLibrary) do
+            for context, handlers in pairs(HOOKS_LIBRARY[widget]) do
                 if handlers[key] then
                     table.insert(build, handlers[key])
                 end
             end
-            widget.lqtEventHooks[key] = ChainFunctions(build)
+            HOOKS[widget][key] = ChainFunctions(build)
         end
     end
 }
